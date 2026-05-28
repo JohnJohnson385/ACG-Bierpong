@@ -17,16 +17,16 @@ def build_tabelle_data(players, matches):
     for i, p in enumerate(players):
         sp = s = n = diff = streak_val = 0
         for m in matches:
-            t1, t2 = m['t1_score'], m['t2_score']
-            if t1 is not None and t2 is not None:
+            t1, m_t2 = m['t1_score'], m['t2_score']
+            if t1 is not None and m_t2 is not None:
                 if i in [m['t1_p1'], m['t1_p2']]:
                     sp += 1
-                    if t1 > t2: s += 1; diff += (t1 - t2); streak_val = streak_val + 1 if streak_val > 0 else 1
-                    else: n += 1; diff += (t1 - t2); streak_val = streak_val - 1 if streak_val < 0 else -1
+                    if t1 > m_t2: s += 1; diff += (t1 - m_t2); streak_val = streak_val + 1 if streak_val > 0 else 1
+                    else: n += 1; diff += (t1 - m_t2); streak_val = streak_val - 1 if streak_val < 0 else -1
                 elif i in [m['t2_p1'], m['t2_p2']]:
                     sp += 1
-                    if t2 > t1: s += 1; diff += (t2 - t1); streak_val = streak_val + 1 if streak_val > 0 else 1
-                    else: n += 1; diff += (t2 - t1); streak_val = streak_val - 1 if streak_val < 0 else -1
+                    if m_t2 > t1: s += 1; diff += (m_t2 - t1); streak_val = streak_val + 1 if streak_val > 0 else 1
+                    else: n += 1; diff += (m_t2 - t1); streak_val = streak_val - 1 if streak_val < 0 else -1
 
         score = s * 10000 + diff
         s_pct = f"{int((s/sp)*100)}%" if sp > 0 else "0%"
@@ -46,7 +46,16 @@ def build_tabelle_data(players, matches):
         min_opp_scores = []
         for opp in player_stats:
             if ps['id'] == opp['id']: continue
-            open_t = sum(1 for m in matches if m['t1_score'] is None and ((ps['id'] in [m['t1_p1'], m['t1_p2'] Buckingham] and opp['id'] in [m['t1_p1'], m['t1_p2']]) or (ps['id'] in [m['t2_p1'], m['t2_p2']] and opp['id'] in [m['t2_p1'], m['t2_p2']])))))
+            
+            # Saubere Berechnung ohne Klammerfehler oder Buckingham-Bug
+            open_t = 0
+            for m in matches:
+                if m['t1_score'] is None:
+                    in_t1 = (ps['id'] in [m['t1_p1'], m['t1_p2']]) and (opp['id'] in [m['t1_p1'], m['t1_p2']])
+                    in_t2 = (ps['id'] in [m['t2_p1'], m['t2_p2']]) and (opp['id'] in [m['t2_p1'], m['t2_p2']])
+                    if in_t1 or in_t2:
+                        open_t += 1
+                        
             min_opp_scores.append(opp['Score'] + (open_t * 10020) - (opp['Rest'] * 10))
 
         if is_finished: ps['STATUS'] = "👑 MEISTER" if ps['Score'] == max_score else "Eliminated"
@@ -87,7 +96,6 @@ def render_tabelle_und_spielplan():
                         f"<span style='color:{t2_c}; font-weight:bold;'>{p3} & {p4}</span></div>", 
                         unsafe_allow_html=True)
             with st.expander("📄 Spielbericht anzeigen"):
-                # BEREICH NEU: Matchstatistiken sortiert ganz oben in den Logs einfügen
                 if m.get('stats'):
                     st.markdown("**🎯 Wurfquoten aus diesem Spiel:**")
                     stats = m['stats']
@@ -250,7 +258,7 @@ def render_statistiken():
             df_bk[['RANG', 'SPIEL', 'ZÜGE (SIEGER)', 'ERGEBNIS']].to_excel(writer, sheet_name="Schnellste Siege", index=False)
         
     st.download_button(
-        label="📥 Gesamtes Turnier als Excel speichern",
+        label="📥 Gesamtes Turnier als Excel保存",
         data=buffer.getvalue(),
         file_name=f"Bierpong_Turnier_{st.session_state.t_date}.xlsx",
         mime="application/vnd.ms-excel",
