@@ -1,6 +1,6 @@
 import streamlit as st
 
-def trigger_nachwurf(team_hitting, amount):
+def trigger_nachwurf(team_hitting, amount, misses=[]):
     """
     Bestimmt die exakte Finish-Qualität von Team Anfang und leitet
     den entsprechenden Nachwurf (1 oder 2 Würfe) für Team Nachwurf ein.
@@ -14,71 +14,83 @@ def trigger_nachwurf(team_hitting, amount):
     # Nur triggern, wenn Team Anfang (Starter) gerade das Spiel auf 0 Becher gebracht hat
     if team_hitting == live['starter']:
         if (team_hitting == 1 and live['t2_cups'] == 0) or (team_hitting == 2 and live['t1_cups'] == 0):
-            if live.get('nachwurf') is None and live.get('single_nachwurf_team') is None:
+            
+            # Wir setzen den Nachwurf nur, wenn er noch nicht initialisiert wurde
+            if 'anfang_finish_quality' not in live:
                 
-                # Ermittle die exakte Qualität des Finishs von Team Anfang
-                is_single_throw = (live.get('single_nachwurf_team') == opponent) or (live.get('pending_last_cup', False))
+                # Hierarchie der Stärke: 3.0 (Bombe) > 2.0 (Doppel) > 1.5 (1. Wurf) > 1.0 (2. Wurf)
+                q = 1.0  
+                if amount == 3: q = 3.0
+                elif amount == 2: q = 2.0
+                elif amount == 1: 
+                    # Wenn misses leer ist, wurde im allerersten Wurf getroffen!
+                    q = 1.5 if len(misses) == 0 else 1.0
                 
-                q = 1.2  # Standard: Einzeltreffer im 2. Wurf
-                if amount == 3: q = 3.0   # Dreifachtreffer (Bombe)
-                elif amount == 2: q = 2.0 # Doppeltreffer
-                elif amount == 1: q = 1.1 if is_single_throw else 1.2 # Einzeltreffer 1. vs 2. Wurf
-                
-                # Merke dir das Finish und den Torschützen von Team Anfang
                 live['anfang_finish_quality'] = q
                 live['anfang_last_scorer'] = live.get('t1_last_scorer' if team_hitting == 1 else 't2_last_scorer')
                 
-                # Nachwurf-Modus basierend auf der Effizienz setzen
-                if q == 1.1:
+                # Wenn es ein hocheffizienter Einzelwurf war (1.5), gibt es nur 1 Nachwurf
+                if q == 1.5:
                     live['single_nachwurf_team'] = opponent
-                    live['possession'] = opponent
                 else:
                     live['nachwurf'] = opponent
-                    live['possession'] = opponent
                     
-                live['action_log'].append(f"🚨 NACHWURF eingeleitet! Team Anfang hat vorgelegt mit Qualität: {q}")
+                # Ball geht für den Nachwurf zwingend an den Gegner
+                live['possession'] = opponent
+                live['action_log'].append(f"🚨 NACHWURF für {names[m[f't{opponent}_p1']]} & {names[m[f't{opponent}_p2']]}!")
 
 def check_game_over():
     """
-    Das Herzstück eurer Regeln. Vergleicht bei 0 Bechern die Qualität des Finishs
+    Das Herzstück. Vergleicht bei 0 Bechern die Qualität des Finishs
     und beendet das Spiel sofort, falls der Nachwurf mathematisch gescheitert ist.
     """
     live = st.session_state.live
     if live is None: return
     
-    anfang_team = live['starter']
-    nachwurf_team = 2 if anfang_team == 1 else 1
+    c1 = live['t1_cups']
+    c2 = live['t2_cups']
+    starter = live['starter']
+    possession = live['possession']
     
-    anfang_cups = live['t1_cups'] if anfang_team == 1 else live['t2_cups']
-    nachwurf_cups = live['t2_cups'] if anfang_team == 1 else live['t1_cups']
-    
-    # REGEL 1: Team Nachwurf beendet das Spiel zuerst -> Sofortiger Sieg für Team Nachwurf
-    if nachwurf_cups == 0 and anfang_cups > 0:
-        live['game_state'] = 't2_won' if nachwurf_team == 2 else 't1_won'
-        return
-        
-    # REGEL 2: Team Anfang hat auf 0 gestellt, Nachwurf läuft.
-    # Wenn der Ballbesitz wieder an Team Anfang zurückgeht, ist der Nachwurf-Zug vorbei.
-    if anfang_cups == 0 and nachwurf_cups > 0:
-        if live['possession'] == anfang_team:
-            # Nachwurf gescheitert (Becher übrig)! Sieg für Team Anfang.
-            live['game_state'] = 't1_won' if anfang_team == 1 else 't2_won'
-            # Der Vollstrecker-Punkt geht sicher an den Schützen von Team Anfang!
-            live['last_scorer'] = live.get('anfang_last_scorer')
-            return
-            
-    # REGEL 3: Das "Quartett" der Finish-Stärken (Beide Teams haben 0 Becher erreicht)
-    if anfang_cups == 0 and nachwurf_cups == 0:
-        q_anfang = live.get('anfang_finish_quality', 1.2)
-        q_nachwurf = live.get('nachwurf_finish_quality', 1.2)
+    # 1. Quartett der Finish-Stärken (Beide Teams haben 0 Becher)
+    if c1 == 0 and c2 == 0:
+        q_anfang = live.get('anfang_finish_quality', 1.0)
+        q_nachwurf = live.get('nachwurf_finish_quality', 1.0)
         
         if q_nachwurf > q_anfang:
-            # Höhere Qualität -> Team Nachwurf gewinnt das Spiel sofort im Nachzug! (z.B. Dreifach schlägt Doppel)
-            live['game_state'] = 't2_won' if nachwurf_team == 2 else 't1_won'
+            # Nachwurf-Team kontert mit stärkerem Finish -> Sieg Nachwurf-Team!
+            live['game_state'] = 't2_won' if starter == 1 else 't1_won'
         elif q_nachwurf == q_anfang:
-            # Exakt gleiche Qualität -> Rettung geglückt! (Zurücksetzen-Button wird aktiv)
+            # Rettung geglückt! Verlängerung aktiv.
             live['game_state'] = 'nachwurf_erfolgreich'
         else:
-            # Geringere Qualität -> Trotz 0 Becher verloren! (z.B. Doppel verliert gegen Dreifach)
-            live['game_state'] = 't1_won' if anfang_team == 1 else 't2_won'
+            # Schwächeres Finish -> Sieg Team Anfang.
+            live['game_state'] = 't1_won' if starter == 1 else 't2_won'
             live['last_scorer'] = live.get('anfang_last_scorer')
+        return
+        
+    # 2. Team 1 hat auf 0 gestellt (Team 2 hat 0 Becher, Team 1 hat noch Becher)
+    if c2 == 0 and c1 > 0:
+        if starter == 1:
+            # Warten auf Nachwurf von Team 2. Endet bei Ballverlust ohne Rettung.
+            nw_active = live.get('nachwurf') == 2 or live.get('single_nachwurf_team') == 2
+            if not nw_active and possession == 1:
+                live['game_state'] = 't1_won'
+                live['last_scorer'] = live.get('anfang_last_scorer', live.get('t1_last_scorer'))
+        elif starter == 2:
+            # Team 2 startete, Team 1 hat nun abgeräumt -> Team 1 gewinnt sofort!
+            live['game_state'] = 't1_won'
+        return
+        
+    # 3. Team 2 hat auf 0 gestellt (Team 1 hat 0 Becher, Team 2 hat noch Becher)
+    if c1 == 0 and c2 > 0:
+        if starter == 2:
+            # Warten auf Nachwurf von Team 1. Endet bei Ballverlust ohne Rettung.
+            nw_active = live.get('nachwurf') == 1 or live.get('single_nachwurf_team') == 1
+            if not nw_active and possession == 2:
+                live['game_state'] = 't2_won'
+                live['last_scorer'] = live.get('anfang_last_scorer', live.get('t2_last_scorer'))
+        elif starter == 1:
+            # Team 1 startete, Team 2 hat nun abgeräumt -> Team 2 gewinnt sofort!
+            live['game_state'] = 't2_won'
+        return
