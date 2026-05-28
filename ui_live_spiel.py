@@ -252,6 +252,36 @@ def render_live_spiel():
                         st.write("")
                         if st.button("⚠️ Fehler Team 2", use_container_width=True): logik_spiel.save_step(); live['pending_penalty'] = 2; datenbank.sync_to_cloud(); st.rerun()
 
+            else:
+                # BEREICH NEU: Statistiken direkt nach Spielentscheidung anzeigen
+                st.write("### 📊 Spiel-Statistiken (Wurfquoten)")
+                stats = live['stats']
+                
+                # Quoten berechnen
+                p1_h, p1_t = stats.get(f"p{i_p1}_h", 0), stats.get(f"p{i_p1}_t", 0)
+                p1_q = (p1_h / p1_t * 100) if p1_t > 0 else 0.0
+                p2_h, p2_t = stats.get(f"p{i_p2}_h", 0), stats.get(f"p{i_p2}_t", 0)
+                p2_q = (p2_h / p2_t * 100) if p2_t > 0 else 0.0
+                
+                p3_h, p3_t = stats.get(f"p{i_p3}_h", 0), stats.get(f"p{i_p3}_t", 0)
+                p3_q = (p3_h / p3_t * 100) if p3_t > 0 else 0.0
+                p4_h, p4_t = stats.get(f"p{i_p4}_h", 0), stats.get(f"p{i_p4}_t", 0)
+                p4_q = (p4_h / p4_t * 100) if p4_t > 0 else 0.0
+                
+                # Nach Quote innerhalb der Teams sortieren
+                t1_sorted = [(p1, p1_h, p1_t, p1_q), (p2, p2_h, p2_t, p2_q)] if p1_q >= p2_q else [(p2, p2_h, p2_t, p2_q), (p1, p1_h, p1_t, p1_q)]
+                t2_sorted = [(p3, p3_h, p3_t, p3_q), (p4, p4_h, p4_t, p4_q)] if p3_q >= p4_q else [(p4, p4_h, p4_t, p4_q), (p3, p3_h, p3_t, p3_q)]
+                
+                c_st1, c_st2 = st.columns(2)
+                with c_st1:
+                    st.markdown(f"**Team 1 ({p1} & {p2}):**")
+                    for name, h, t, q in t1_sorted:
+                        st.write(f"🎯 **{name}**: {h} Treffer / {t} Würfe ({q:.2f}%)")
+                with c_st2:
+                    st.markdown(f"**Team 2 ({p3} & {p4}):**")
+                    for name, h, t, q in t2_sorted:
+                        st.write(f"🎯 **{name}**: {h} Treffer / {t} Würfe ({q:.2f}%)")
+
             st.write("---")
             ctrl1, ctrl2, ctrl3 = st.columns(3)
             with ctrl1:
