@@ -46,7 +46,7 @@ def build_tabelle_data(players, matches):
         min_opp_scores = []
         for opp in player_stats:
             if ps['id'] == opp['id']: continue
-            open_t = sum(1 for m in matches if m['t1_score'] is None and ((ps['id'] in [m['t1_p1'], m['t1_p2']] and opp['id'] in [m['t1_p1'], m['t1_p2']]) or (ps['id'] in [m['t2_p1'], m['t2_p2']] and opp['id'] in [m['t2_p1'], m['t2_p2']])))
+            open_t = sum(1 for m in matches if m['t1_score'] is None and ((ps['id'] in [m['t1_p1'], m['t1_p2'] Buckingham] and opp['id'] in [m['t1_p1'], m['t1_p2']]) or (ps['id'] in [m['t2_p1'], m['t2_p2']] and opp['id'] in [m['t2_p1'], m['t2_p2']])))))
             min_opp_scores.append(opp['Score'] + (open_t * 10020) - (opp['Rest'] * 10))
 
         if is_finished: ps['STATUS'] = "👑 MEISTER" if ps['Score'] == max_score else "Eliminated"
@@ -87,6 +87,29 @@ def render_tabelle_und_spielplan():
                         f"<span style='color:{t2_c}; font-weight:bold;'>{p3} & {p4}</span></div>", 
                         unsafe_allow_html=True)
             with st.expander("📄 Spielbericht anzeigen"):
+                # BEREICH NEU: Matchstatistiken sortiert ganz oben in den Logs einfügen
+                if m.get('stats'):
+                    st.markdown("**🎯 Wurfquoten aus diesem Spiel:**")
+                    stats = m['stats']
+                    i_p1, i_p2, i_p3, i_p4 = m['t1_p1'], m['t1_p2'], m['t2_p1'], m['t2_p2']
+                    
+                    p1_h, p1_t = stats.get(f"p{i_p1}_h", 0), stats.get(f"p{i_p1}_t", 0)
+                    p1_q = (p1_h / p1_t * 100) if p1_t > 0 else 0.0
+                    p2_h, p2_t = stats.get(f"p{i_p2}_h", 0), stats.get(f"p{i_p2}_t", 0)
+                    p2_q = (p2_h / p2_t * 100) if p2_t > 0 else 0.0
+                    
+                    p3_h, p3_t = stats.get(f"p{i_p3}_h", 0), stats.get(f"p{i_p3}_t", 0)
+                    p3_q = (p3_h / p3_t * 100) if p3_t > 0 else 0.0
+                    p4_h, p4_t = stats.get(f"p{i_p4}_h", 0), stats.get(f"p{i_p4}_t", 0)
+                    p4_q = (p4_h / p4_t * 100) if p4_t > 0 else 0.0
+                    
+                    t1_s = [(p1, p1_q), (p2, p2_q)] if p1_q >= p2_q else [(p2, p2_q), (p1, p1_q)]
+                    t2_s = [(p3, p3_q), (p4, p4_q)] if p3_q >= p4_q else [(p4, p4_q), (p3, p3_q)]
+                    
+                    st.write(f"🟢 **Team 1:** {t1_s[0][0]} ({t1_s[0][1]:.2f}%) &nbsp;|&nbsp; {t1_s[1][0]} ({t1_s[1][1]:.2f}%)")
+                    st.write(f"🔵 **Team 2:** {t2_s[0][0]} ({t2_s[0][1]:.2f}%) &nbsp;|&nbsp; {t2_s[1][0]} ({t2_s[1][1]:.2f}%)")
+                    st.divider()
+
                 if m.get('action_log'):
                     for entry in m['action_log']: st.caption(entry)
                 else: st.caption("Kein Log vorhanden")
