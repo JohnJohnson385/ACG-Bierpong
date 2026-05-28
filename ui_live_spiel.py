@@ -2,6 +2,7 @@ import streamlit as st
 import copy
 import datenbank
 import logik_spiel
+import logik_nachwurf
 
 def get_pct(hits, throws):
     return int((hits / throws) * 100) if throws > 0 else 0
@@ -253,11 +254,9 @@ def render_live_spiel():
                         if st.button("⚠️ Fehler Team 2", use_container_width=True): logik_spiel.save_step(); live['pending_penalty'] = 2; datenbank.sync_to_cloud(); st.rerun()
 
             else:
-                # BEREICH NEU: Statistiken direkt nach Spielentscheidung anzeigen
                 st.write("### 📊 Spiel-Statistiken (Wurfquoten)")
                 stats = live['stats']
                 
-                # Quoten berechnen
                 p1_h, p1_t = stats.get(f"p{i_p1}_h", 0), stats.get(f"p{i_p1}_t", 0)
                 p1_q = (p1_h / p1_t * 100) if p1_t > 0 else 0.0
                 p2_h, p2_t = stats.get(f"p{i_p2}_h", 0), stats.get(f"p{i_p2}_t", 0)
@@ -268,7 +267,6 @@ def render_live_spiel():
                 p4_h, p4_t = stats.get(f"p{i_p4}_h", 0), stats.get(f"p{i_p4}_t", 0)
                 p4_q = (p4_h / p4_t * 100) if p4_t > 0 else 0.0
                 
-                # Nach Quote innerhalb der Teams sortieren
                 t1_sorted = [(p1, p1_h, p1_t, p1_q), (p2, p2_h, p2_t, p2_q)] if p1_q >= p2_q else [(p2, p2_h, p2_t, p2_q), (p1, p1_h, p1_t, p1_q)]
                 t2_sorted = [(p3, p3_h, p3_t, p3_q), (p4, p4_h, p4_t, p4_q)] if p3_q >= p4_q else [(p4, p4_h, p4_t, p4_q), (p3, p3_h, p3_t, p3_q)]
                 
@@ -282,6 +280,7 @@ def render_live_spiel():
                     for name, h, t, q in t2_sorted:
                         st.write(f"🎯 **{name}**: {h} Treffer / {t} Würfe ({q:.2f}%)")
 
+            # --- KONTROLL-LEISTE ---
             st.write("---")
             ctrl1, ctrl2, ctrl3 = st.columns(3)
             with ctrl1:
@@ -337,3 +336,93 @@ def render_live_spiel():
                         st.rerun()
                 else:
                     st.button("💾 Ergebnis speichern", use_container_width=True, disabled=True)
+
+            # =========================================================================
+            # BEREICH NEU: SCHIEDSRICHTER-PANEL (MANUELLE ANPASSUNGEN)
+            # =========================================================================
+            st.write("---")
+            with st.expander("🛠️ Schiedsrichter-Panel: Spielstand manuell überschreiben / Fehlerkorrektur"):
+                st.warning("⚠️ Achtung: Änderungen hier überschreiben den aktuellen Zustand sofort in der Cloud!")
+                
+                col_m1, col_m2 = st.columns(2)
+                with col_m1:
+                    adj_t1_cups = st.number_input(f"Becher Team 1 ({p1} & {p2}):", min_value=0, max_value=10, value=int(live['t1_cups']), key="adj_t1_cups")
+                    
+                    # Ballbesitz-Mapping
+                    pos_options = [f"Team 1 ({p1} & {p2})", f"Team 2 ({p3} & {p4})"]
+                    pos_index = 0 if live['possession'] == 1 else 1
+                    adj_pos_str = st.radio("Wer hat aktuell Ballbesitz?", options=pos_options, index=pos_index, key="adj_pos")
+                    adj_pos = 1 if adj_pos_str == pos_options[0] else 2
+                    
+                with col_m2:
+                    adj_t2_cups = st.number_input(f"Becher Team 2 ({p3} & {p4}):", min_value=0, max_value=10, value=int(live['t2_cups']), key="adj_t2_cups")
+                    
+                    # Nachwurf-Modus Mapping
+                    nw_options = [
+                        "Kein Nachwurf aktiv", 
+                        "Normaler Nachwurf (2 Würfe) für Team 1", 
+                        "Normaler Nachwurf (2 Würfe) für Team 2",
+                        "Einzel-Nachwurf (1 Wurf) für Team 1",
+                        "Einzel-Nachwurf (1 Wurf) für Team 2"
+                    ]
+                    nw_index = 0
+                    if live['nachwurf'] == 1: nw_index = 1
+                    elif live['nachwurf'] == 2: nw_index = 2
+                    elif live.get('single_nachwurf_team') == 1: nw_index = 3
+                    elif live.get('single_nachwurf_team') == 2: nw_index = 4
+                    
+                    adj_nw_str = st.selectbox("Aktueller Nachwurf-Modus:", options=nw_options, index=nw_index, key="adj_nw")
+                    
+                    # Spiel-Status Mapping
+                    state_options = ["Laufendes Spiel (playing)", "Nachwurf erfolgreich / Verlängerung (nachwurf_erfolgreich)", "Sieg Team 1 (t1_won)", "Sieg Team 2 (t2_won)"]
+                    state_index = 0
+                    if live['game_state'] == 'nachwurf_erfolgreich': state_index = 1
+                    elif live['game_state'] == 't1_won': state_index = 2
+                    elif live['game_state'] == 't2_won': state_index = 3
+                    
+                    adj_state_str = st.selectbox("Spiel-Status überschreiben:", options=state_options, index=state_index, key="adj_state")
+                
+                if st.button("💾 Manuelle Anpassungen übernehmen & synchronisieren", type="primary", use_container_width=True):
+                    # Vorherigen Schritt für Undo sichern
+                    logik_spiel.save_step()
+                    
+                    # Werte überschreiben
+                    live['t1_cups'] = adj_t1_cups
+                    live['t2_cups'] = adj_t2_cups
+                    live['possession'] = adj_pos
+                    
+                    # Nachwurf anwenden
+                    if adj_nw_str == nw_options[0]:
+                        live['nachwurf'] = None
+                        live['single_nachwurf_team'] = None
+                    elif adj_nw_str == nw_options[1]:
+                        live['nachwurf'] = 1
+                        live['single_nachwurf_team'] = None
+                    elif adj_nw_str == nw_options[2]:
+                        live['nachwurf'] = 2
+                        live['single_nachwurf_team'] = None
+                    elif adj_nw_str == nw_options[3]:
+                        live['nachwurf'] = None
+                        live['single_nachwurf_team'] = 1
+                        live['single_nachwurf_shooter'] = None # Zurücksetzen, damit man Schützen neu wählen kann
+                    elif adj_nw_str == nw_options[4]:
+                        live['nachwurf'] = None
+                        live['single_nachwurf_team'] = 2
+                        live['single_nachwurf_shooter'] = None
+                        
+                    # Status anwenden
+                    if adj_state_str == state_options[0]: live['game_state'] = 'playing'
+                    elif adj_state_str == state_options[1]: live['game_state'] = 'nachwurf_erfolgreich'
+                    elif adj_state_str == state_options[2]: live['game_state'] = 't1_won'
+                    elif adj_state_str == state_options[3]: live['game_state'] = 't2_won'
+                    
+                    # Einloggen in den Log
+                    logik_spiel.log_action(f"🛠️ Schiedsrichter-Eingriff: Spielstand manuell angepasst! (Stand {live['t1_cups']}:{live['t2_cups']})")
+                    
+                    # Sicherheits-Check durch die Nachwurf-Regeln jagen, falls Becher auf 0 korrigiert wurden
+                    logik_nachwurf.check_game_over()
+                    
+                    # Firebase updaten & Seite neu laden
+                    datenbank.sync_to_cloud()
+                    st.success("Änderungen erfolgreich live geschaltet!")
+                    st.rerun()
