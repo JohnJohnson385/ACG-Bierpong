@@ -40,10 +40,10 @@ def do_hit(team_hitting, amount, hits=[], misses=[], bombe_thrower=None, is_ball
     names = st.session_state.players
     m = st.session_state.matches[live['match_id']]
     
-    # Prüfen, ob das werfende Team gerade im Nachwurf-Modus ist
+    # Prüfen, ob das werfende Team gerade im Nachwurf-Modus ums Überleben kämpft
     ist_im_nachwurf = (live.get('nachwurf') == team_hitting) or (live.get('single_nachwurf_team') == team_hitting)
     
-    # HAUSREGEL: Wenn man im Nachwurf einen Doppel- oder Dreifachtreffer macht -> zwingend BALLS BACK!
+    # HAUSREGEL: Balls Back greift AUCH im Nachwurf, wenn Doppel/Bombe geworfen wird!
     if ist_im_nachwurf and amount >= 2:
         is_balls_back = True
         
@@ -51,7 +51,7 @@ def do_hit(team_hitting, amount, hits=[], misses=[], bombe_thrower=None, is_ball
     t_name = f"{names[m['t1_p1']]} & {names[m['t1_p2']]}" if team_hitting == 1 else f"{names[m['t2_p1']]} & {names[m['t2_p2']]}"
     turn = live['stats'][f'turns_t{team_hitting}']
     
-    # Letzten Torschützen im State vermerken
+    # Letzten Schützen protokollieren
     scorer = bombe_thrower if bombe_thrower is not None else (hits[-1] if hits else None)
     if scorer is not None:
         if team_hitting == 1: live['t1_last_scorer'] = scorer
@@ -61,13 +61,13 @@ def do_hit(team_hitting, amount, hits=[], misses=[], bombe_thrower=None, is_ball
     if team_hitting == 1: live['t2_cups'] = max(0, live['t2_cups'] - amount)
     else: live['t1_cups'] = max(0, live['t1_cups'] - amount)
     
-    # Falls das Nachwurf-Team gerade die 0 Becher erreicht hat, speichere ihre Finish-Qualität
+    # Falls Team Nachwurf jetzt die 0 erreicht, speichern wir ihre Qualität
     if ist_im_nachwurf and ((team_hitting == 1 and live['t2_cups'] == 0) or (team_hitting == 2 and live['t1_cups'] == 0)):
-        is_single_throw = (live.get('single_nachwurf_team') == team_hitting)
-        q = 1.2
+        q = 1.0
         if amount == 3: q = 3.0
         elif amount == 2: q = 2.0
-        elif amount == 1: q = 1.1 if is_single_throw else 1.2
+        elif amount == 1: 
+            q = 1.5 if len(misses) == 0 else 1.0
         live['nachwurf_finish_quality'] = q
     
     s_txt = f"(Stand: {live['t1_cups']}:{live['t2_cups']})"
@@ -88,7 +88,8 @@ def do_hit(team_hitting, amount, hits=[], misses=[], bombe_thrower=None, is_ball
         if live.get('nachwurf') == team_hitting: live['nachwurf'] = None
         if live.get('single_nachwurf_team') == team_hitting: live['single_nachwurf_team'] = None
         
-    logik_nachwurf.trigger_nachwurf(team_hitting, amount)
+    # Trigger & Game Over Checks rufen
+    logik_nachwurf.trigger_nachwurf(team_hitting, amount, misses)
     logik_nachwurf.check_game_over()
     datenbank.sync_to_cloud()
 
