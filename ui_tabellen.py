@@ -13,9 +13,12 @@ def style_df(val):
     return ''
 
 def build_tabelle_data(players, matches):
-    # Initialisiere manuelle Overrides im SessionState falls nicht existent
+    # BUGFIX: Dynamisch prüfen, ob JEDER aktuelle Spielername auch im System registriert ist
     if 'master_overrides' not in st.session_state:
-        st.session_state.master_overrides = {p: {'S': 0, 'N': 0, 'DIFF': 0} for p in players}
+        st.session_state.master_overrides = {}
+    for p in players:
+        if p not in st.session_state.master_overrides:
+            st.session_state.master_overrides[p] = {'S': 0, 'N': 0, 'DIFF': 0}
 
     player_stats = []
     for i, p in enumerate(players):
@@ -168,8 +171,12 @@ def render_statistiken():
     players = st.session_state.players
     matches = st.session_state.matches
     
+    # BUGFIX: Dynamisch prüfen, ob JEDER aktuelle Spielername auch im System registriert ist
     if 'stat_overrides' not in st.session_state:
-        st.session_state.stat_overrides = {p: {'H': 0, 'T': 0, 'GW': 0, 'B': 0, 'C': 0, 'F': 0} for p in players}
+        st.session_state.stat_overrides = {}
+    for p in players:
+        if p not in st.session_state.stat_overrides:
+            st.session_state.stat_overrides[p] = {'H': 0, 'T': 0, 'GW': 0, 'B': 0, 'C': 0, 'F': 0}
         
     master_on = st.checkbox("🔓 Master-Modus: Manuelle Statistik-Korrekturen freischalten")
     if master_on:
@@ -295,7 +302,6 @@ def render_statistiken():
     st.write("---")
     st.subheader("💾 Turnier Archivieren")
     
-    # HIER IST DER FIX: Wir laden die Tabelle nochmal exklusiv für den Export, damit sie nie leer sein kann!
     df_table = build_tabelle_data(players, matches)
     
     buffer = io.BytesIO()
