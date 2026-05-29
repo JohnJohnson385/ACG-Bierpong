@@ -17,13 +17,16 @@ def change_possession(new_poss):
     if new_poss == 1: live['stats']['turns_t1'] += 1
     else: live['stats']['turns_t2'] += 1
 
-def do_hit(team_hitting, amount, hits=[], misses=[], bombe_thrower=None, is_balls_back=False):
+def do_hit(team_hitting, amount, hits=[], misses=[], bombe_thrower=None):
     save_step()
     live = st.session_state.live
     names = st.session_state.players
     m = st.session_state.matches[live['match_id']]
     
+    # HART CODIERTES BALLS BACK: Wenn 2 oder 3 Becher fallen, gibt es die Bälle zurück!
+    is_balls_back = True if amount >= 2 else False
     live['balls_back'] = is_balls_back
+    
     t_name = f"{names[m['t1_p1']]} & {names[m['t1_p2']]}" if team_hitting == 1 else f"{names[m['t2_p1']]} & {names[m['t2_p2']]}"
     turn = live['stats'][f'turns_t{team_hitting}']
     
