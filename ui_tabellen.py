@@ -116,7 +116,6 @@ def render_tabelle_und_spielplan():
                         unsafe_allow_html=True)
             
             with st.expander("📄 Spielbericht anzeigen"):
-                # ANZEIGEN-ERWEITERUNG: Vollstrecker ganz oben einfügen!
                 v_id = m.get('last_scorer')
                 v_name = players[v_id] if v_id is not None else "Keiner (z.B. Fehler-Punkt)"
                 st.markdown(f"🗡️ **Vollstrecker (Siegtreffer):** `{v_name}`")
@@ -151,7 +150,6 @@ def render_tabelle_und_spielplan():
         else:
             st.write(f"⚪ Spiel {m['id']+1} | {p1} & {p2} VS {p3} & {p4}")
 
-    # ANZEIGEN-ERWEITERUNG: Matrix der verbleibenden Team-Paarungen
     st.divider()
     st.subheader("🧩 Matrix der verbleibenden Paarungen")
     st.write("Wie viele offene Spiele hat jeder Spieler noch mit welchem Partner?")
@@ -170,7 +168,6 @@ def render_statistiken():
     players = st.session_state.players
     matches = st.session_state.matches
     
-    # MASTER-MODUS ERWEITERUNG: Korrekturfläche für Fehlerbehebung
     if 'stat_overrides' not in st.session_state:
         st.session_state.stat_overrides = {p: {'H': 0, 'T': 0, 'GW': 0, 'B': 0, 'C': 0, 'F': 0} for p in players}
         
@@ -200,7 +197,6 @@ def render_statistiken():
                 bombs += sum(1 for b in m.get('bombs_events', []) if b == i)
                 clutch += sum(1 for c in m.get('clutch_nachwurf_events', []) if c == i)
         
-        # Manuelle Korrekturen einrechnen
         so = st.session_state.stat_overrides.get(p, {'H': 0, 'T': 0, 'GW': 0, 'B': 0, 'C': 0, 'F': 0})
         hits += so['H']
         throws += so['T']
@@ -298,13 +294,23 @@ def render_statistiken():
 
     st.write("---")
     st.subheader("💾 Turnier Archivieren")
+    
+    # HIER IST DER FIX: Wir laden die Tabelle nochmal exklusiv für den Export, damit sie nie leer sein kann!
+    df_table = build_tabelle_data(players, matches)
+    
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         df_table[['RANG', 'NAME', 'SP', 'S', 'N', 'DIFF', 'S%', 'SERIE', 'STATUS']].to_excel(writer, sheet_name="Tabelle", index=False)
         df_matches.to_excel(writer, sheet_name="Spielplan", index=False)
         df_quote[['RANG', 'NAME', 'TREFFER', 'WÜRFE', 'QUOTE']].to_excel(writer, sheet_name="Trefferquoten", index=False)
         if not df_gw.empty: df_gw[['RANG', 'NAME', 'SIEGTREFFER']].to_excel(writer, sheet_name="Vollstrecker", index=False)
-        
+        if not df_bomb.empty: df_bomb[['RANG', 'NAME', 'DREIFACHBECHER-TREFFER']].to_excel(writer, sheet_name="Dreifachbecher", index=False)
+        if not df_clutch.empty: df_clutch[['RANG', 'NAME', 'NACHWURF RETTER']].to_excel(writer, sheet_name="Nachwurf Retter", index=False)
+        if not df_dk.empty: df_dk[['RANG', 'NAME', 'FEHLER']].to_excel(writer, sheet_name="Dummkopf", index=False)
+        if match_data: 
+            df_hs[['RANG', 'SPIEL', 'ERGEBNIS', 'DIFF', 'ZÜGE (SIEGER)']].to_excel(writer, sheet_name="Höchste Siege", index=False)
+            df_bk[['RANG', 'SPIEL', 'ZÜGE (SIEGER)', 'ERGEBNIS']].to_excel(writer, sheet_name="Schnellste Siege", index=False)
+            
     st.download_button(
         label="📥 Gesamtes Turnier als Excel speichern",
         data=buffer.getvalue(),
