@@ -4,7 +4,9 @@ import datenbank
 
 def save_step():
     l = st.session_state.live
-    l['history'].append(copy.deepcopy(l))
+    # BAUT EINEN SNAPSHOT: Kopiert alles, AUßER die 'history' selbst! (Verhindert den Matroschka-Absturz)
+    snapshot = {k: copy.deepcopy(v) for k, v in l.items() if k != 'history'}
+    l['history'].append(snapshot)
 
 def log_action(text):
     st.session_state.live['action_log'].append(text)
