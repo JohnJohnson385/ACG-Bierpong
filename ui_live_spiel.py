@@ -40,7 +40,7 @@ def render_live_spiel():
             if st.button("▶️ Spiel starten", type="primary", use_container_width=True):
                 st.session_state.live = {
                     'match_id': sel_id, 'starter': None, 'possession': None, 't1_cups': 10, 't2_cups': 10, 
-                    'balls_back': False, 'pending_bomb': False, 'bomb_team': None, 'pending_double_win': False, 'pending_last_cup': False, 'pending_penalty': None,
+                    'balls_back': False, 'pending_bomb': False, 'bomb_team': None, 'pending_penalty': None,
                     't1_last_scorer': None, 't2_last_scorer': None, 'last_scorer': None, 'winner_team': None,
                     'action_log': [], 'history': [], 'game_state': 'playing', 'cups_at_turn_start': {'t1_cups': 10, 't2_cups': 10},
                     'bombs_events': [], 'clutch_nachwurf_events': [],
@@ -100,7 +100,7 @@ def render_live_spiel():
             st.write("---")
 
             # =========================================================================
-            # DER NEUE MANUELLE NACHWURF-BILDSCHIRM
+            # DER MANUELLE NACHWURF-BILDSCHIRM
             # =========================================================================
             if live['game_state'] == 'nachwurf_dialog':
                 anfang_team = live.get('anfang_team', 1)
@@ -130,24 +130,20 @@ def render_live_spiel():
                 
                 c_btn1, c_btn2 = st.columns(2)
                 
-                # Button 1: Rettung geglückt
                 if c_btn1.button("🟢 Rettung geglückt (Verlängerung)", use_container_width=True):
                     live['t1_cups'] = live['cups_at_turn_start']['t1_cups']
                     live['t2_cups'] = live['cups_at_turn_start']['t2_cups']
                     live['game_state'] = 'playing'
                     live['possession'] = anfang_team
-                    live['anfang_last_scorer'] = None # Vollstrecker wird gelöscht!
+                    live['anfang_last_scorer'] = None
                     live['stats'][f"p{i_nw_1}_t"] += w_1; live['stats'][f"p{i_nw_1}_h"] += t_1
                     live['stats'][f"p{i_nw_2}_t"] += w_2; live['stats'][f"p{i_nw_2}_h"] += t_2
                     logik_spiel.log_action("🔄 Nachwurf erfolgreich! Becher zurückgesetzt, Verlängerung gestartet.")
                     datenbank.sync_to_cloud(); st.rerun()
 
-                # Button 2: Team Anfang gewinnt
                 if c_btn2.button(f"🏆 Team {anfang_team} gewinnt endgültig", use_container_width=True):
                     live['stats'][f"p{i_nw_1}_t"] += w_1; live['stats'][f"p{i_nw_1}_h"] += t_1
                     live['stats'][f"p{i_nw_2}_t"] += w_2; live['stats'][f"p{i_nw_2}_h"] += t_2
-                    
-                    # Becher abziehen (Team Nachwurf Ergebnis)
                     cups_hit = t_1 + t_2
                     if nw_team == 1: live['t1_cups'] = max(0, live['t1_cups'] - cups_hit)
                     else: live['t2_cups'] = max(0, live['t2_cups'] - cups_hit)
@@ -160,21 +156,18 @@ def render_live_spiel():
                     
                 st.write("---")
                 st.markdown("**Spiel gedreht? (Konter-Sieg)**")
-                # Dropdown für den Vollstrecker von Team Nachwurf!
                 vollstrecker_nw = st.selectbox("Wer hat den Siegtreffer für Team Nachwurf gemacht?", options=[p_nw_1, p_nw_2])
                 v_idx = i_nw_1 if vollstrecker_nw == p_nw_1 else i_nw_2
 
-                # Button 3: Team Nachwurf gewinnt
                 if st.button(f"🏆 Team {nw_team} dreht das Spiel und gewinnt!", use_container_width=True):
                     live['stats'][f"p{i_nw_1}_t"] += w_1; live['stats'][f"p{i_nw_1}_h"] += t_1
                     live['stats'][f"p{i_nw_2}_t"] += w_2; live['stats'][f"p{i_nw_2}_h"] += t_2
-                    
                     if nw_team == 1: live['t1_cups'] = 0
                     else: live['t2_cups'] = 0
                     
                     live['game_state'] = 't1_won' if nw_team == 1 else 't2_won'
                     live['winner_team'] = nw_team
-                    live['last_scorer'] = v_idx # Vollstrecker wird gesetzt!
+                    live['last_scorer'] = v_idx
                     logik_spiel.log_action(f"🎉 Team {nw_team} dreht das Spiel im Nachwurf und gewinnt!")
                     datenbank.sync_to_cloud(); st.rerun()
 
@@ -197,11 +190,15 @@ def render_live_spiel():
                     st.warning("💣 DREIFACHTREFFER! Welcher Spieler hat den ZWEITEN Ball versenkt?")
                     bp1, bp2 = st.columns(2)
                     if live['bomb_team'] == 1:
-                        if bp1.button(f"{p1}", use_container_width=True): logik_spiel.do_hit(1, 3, hits=[i_p1, i_p2], bombe_thrower=i_p1); live['pending_bomb'] = False; st.rerun()
-                        if bp2.button(f"{p2}", use_container_width=True): logik_spiel.do_hit(1, 3, hits=[i_p1, i_p2], bombe_thrower=i_p2); live['pending_bomb'] = False; st.rerun()
+                        if bp1.button(f"{p1} hat nachgeworfen", use_container_width=True): 
+                            live['pending_bomb'] = False; logik_spiel.do_hit(1, 3, hits=[i_p1, i_p2], bombe_thrower=i_p1); st.rerun()
+                        if bp2.button(f"{p2} hat nachgeworfen", use_container_width=True): 
+                            live['pending_bomb'] = False; logik_spiel.do_hit(1, 3, hits=[i_p1, i_p2], bombe_thrower=i_p2); st.rerun()
                     else:
-                        if bp1.button(f"{p3}", use_container_width=True): logik_spiel.do_hit(2, 3, hits=[i_p3, i_p4], bombe_thrower=i_p3); live['pending_bomb'] = False; st.rerun()
-                        if bp2.button(f"{p4}", use_container_width=True): logik_spiel.do_hit(2, 3, hits=[i_p3, i_p4], bombe_thrower=i_p4); live['pending_bomb'] = False; st.rerun()
+                        if bp1.button(f"{p3} hat nachgeworfen", use_container_width=True): 
+                            live['pending_bomb'] = False; logik_spiel.do_hit(2, 3, hits=[i_p3, i_p4], bombe_thrower=i_p3); st.rerun()
+                        if bp2.button(f"{p4} hat nachgeworfen", use_container_width=True): 
+                            live['pending_bomb'] = False; logik_spiel.do_hit(2, 3, hits=[i_p3, i_p4], bombe_thrower=i_p4); st.rerun()
                 
                 else:
                     colL, colR = st.columns(2)
@@ -275,7 +272,7 @@ def render_live_spiel():
                     if st.button("💾 Ergebnis speichern & Schließen", use_container_width=True, type="primary"):
                         m['t1_score'] = live['t1_cups']; m['t2_score'] = live['t2_cups']; m['stats'] = copy.deepcopy(live['stats'])
                         m['last_scorer'] = live.get('last_scorer')
-                        m['winner_team'] = live.get('winner_team') # Sichert das Gewinnerteam
+                        m['winner_team'] = live.get('winner_team') 
                         m['action_log'] = copy.deepcopy(live['action_log']); m['bombs_events'] = copy.deepcopy(live['bombs_events']); m['clutch_nachwurf_events'] = copy.deepcopy(live['clutch_nachwurf_events'])
                         m['winner_turns'] = live['stats']['turns_t1'] if live['game_state'] == 't1_won' else live['stats']['turns_t2']
                         m['live_backup'] = copy.deepcopy(live); st.session_state.live = None; datenbank.sync_to_cloud(); st.rerun()
