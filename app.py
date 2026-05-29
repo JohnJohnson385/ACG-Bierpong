@@ -31,25 +31,6 @@ if 'confirm_delete' not in st.session_state: st.session_state.confirm_delete = N
 if 'admin_auth' not in st.session_state:
     st.session_state.admin_auth = st.query_params.get("admin") == "true"
 
-def get_basic_standings():
-    stats = []
-    for i, p in enumerate(st.session_state.players):
-        s = n = 0
-        for m in st.session_state.matches:
-            t1, t2 = m['t1_score'], m['t2_score']
-            if t1 is not None and t2 is not None:
-                if i in [m['t1_p1'], m['t1_p2']]:
-                    if t1 > t2: s += 1
-                    else: n += 1
-                elif i in [m['t2_p1'], m['t2_p2']]:
-                    if t2 > t1: s += 1
-                    else: n += 1
-        stats.append({'NAME': p, 'S': s, 'N': n, 'SCORE': s - n})
-    df = pd.DataFrame(stats).sort_values(by=['SCORE', 'S'], ascending=[False, False]).reset_index(drop=True)
-    df.index += 1
-    df.insert(0, 'RANG', df.index)
-    return df[['RANG', 'NAME', 'S', 'N']]
-
 # 3. SIDEBAR (Login & Auswahl)
 with st.sidebar:
     if not st.session_state.admin_auth:
@@ -84,7 +65,20 @@ with st.sidebar:
     st.write("---")
     st.write(f"**Live: {st.session_state.t_name}**")
     if st.session_state.current_tournament_id:
-        st.dataframe(get_basic_standings(), hide_index=True, use_container_width=True)
+        
+        # HIER IST DER FIX: Die Seitenleiste greift auf die zentrale Logik der ui_tabellen zu!
+        st.subheader("🏆 Live Tabelle")
+        try:
+            df_side = ui_tabellen.build_tabelle_data(st.session_state.players, st.session_state.matches)
+            # Eine kompakte Version für die Sidebar ohne Treffer-Differenz-Gewusel
+            st.dataframe(
+                df_side[['RANG', 'NAME', 'SP', 'S', 'N', 'DIFF', 'STATUS']].style.map(ui_tabellen.style_df), 
+                hide_index=True, 
+                use_container_width=True
+            )
+        except Exception as e:
+            st.caption("Tabelle wird aktualisiert...")
+            
     else:
         st.caption("Bitte lade oder erstelle erst ein Turnier.")
 
