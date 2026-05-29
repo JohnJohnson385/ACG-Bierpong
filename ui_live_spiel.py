@@ -112,7 +112,7 @@ def render_live_spiel():
                 i_nw_2 = i_p2 if nw_team == 1 else i_p4
                 
                 st.error("🚨 NACHWURF-MODUS AKTIV 🚨")
-                st.markdown(f"**Team {anfang_team} hat den letzten Becher getroffen! Team {nw_team} hat nun Nachwurf.**")
+                st.markdown(f"**Team {anfang_team} hat abgeräumt! Team {nw_team} hat nun Nachwurf.**")
                 
                 st.write("**1. Statistiken für den Nachwurf eintragen:**")
                 col_nw1, col_nw2 = st.columns(2)
@@ -126,27 +126,40 @@ def render_live_spiel():
                     t_2 = st.number_input(f"Treffer {p_nw_2}:", min_value=0, max_value=w_2, value=0, key="nw_t2")
 
                 st.write("---")
-                st.write("**2. Schiedsrichter-Entscheidung treffen:**")
+                st.write("**2. Wer hat im Nachwurf stark abgeliefert? (Für die Retter/Sieg-Statistik)**")
+                retter_opts = ["Keiner"] + [p_nw_1, p_nw_2]
+                retter_name = st.selectbox("Wer hat den entscheidenden letzten Becher versenkt?", options=retter_opts)
+                v_idx = None
+                if retter_name == p_nw_1: v_idx = i_nw_1
+                elif retter_name == p_nw_2: v_idx = i_nw_2
+
+                st.write("---")
+                st.write("**3. Schiedsrichter-Entscheidung treffen:**")
                 
                 c_btn1, c_btn2 = st.columns(2)
                 
+                # RETTUNG GEGLÜCKT
                 if c_btn1.button("🟢 Rettung geglückt (Verlängerung)", use_container_width=True):
                     live['t1_cups'] = live['cups_at_turn_start']['t1_cups']
                     live['t2_cups'] = live['cups_at_turn_start']['t2_cups']
                     live['game_state'] = 'playing'
                     live['possession'] = anfang_team
-                    live['anfang_last_scorer'] = None
+                    live['anfang_last_scorer'] = None # Vollstrecker wird gelöscht
+                    if v_idx is not None: live['clutch_nachwurf_events'].append(v_idx)
                     live['stats'][f"p{i_nw_1}_t"] += w_1; live['stats'][f"p{i_nw_1}_h"] += t_1
                     live['stats'][f"p{i_nw_2}_t"] += w_2; live['stats'][f"p{i_nw_2}_h"] += t_2
                     logik_spiel.log_action("🔄 Nachwurf erfolgreich! Becher zurückgesetzt, Verlängerung gestartet.")
                     datenbank.sync_to_cloud(); st.rerun()
 
+                # TEAM ANFANG GEWINNT
                 if c_btn2.button(f"🏆 Team {anfang_team} gewinnt endgültig", use_container_width=True):
                     live['stats'][f"p{i_nw_1}_t"] += w_1; live['stats'][f"p{i_nw_1}_h"] += t_1
                     live['stats'][f"p{i_nw_2}_t"] += w_2; live['stats'][f"p{i_nw_2}_h"] += t_2
+                    
+                    # BUG-FIX: Becher werden vom GEGNER abgezogen!
                     cups_hit = t_1 + t_2
-                    if nw_team == 1: live['t1_cups'] = max(0, live['t1_cups'] - cups_hit)
-                    else: live['t2_cups'] = max(0, live['t2_cups'] - cups_hit)
+                    if nw_team == 1: live['t2_cups'] = max(0, live['t2_cups'] - cups_hit)
+                    else: live['t1_cups'] = max(0, live['t1_cups'] - cups_hit)
                     
                     live['game_state'] = 't1_won' if anfang_team == 1 else 't2_won'
                     live['winner_team'] = anfang_team
@@ -155,19 +168,20 @@ def render_live_spiel():
                     datenbank.sync_to_cloud(); st.rerun()
                     
                 st.write("---")
-                st.markdown("**Spiel gedreht? (Konter-Sieg)**")
-                vollstrecker_nw = st.selectbox("Wer hat den Siegtreffer für Team Nachwurf gemacht?", options=[p_nw_1, p_nw_2])
-                v_idx = i_nw_1 if vollstrecker_nw == p_nw_1 else i_nw_2
-
+                
+                # KONTER-SIEG
                 if st.button(f"🏆 Team {nw_team} dreht das Spiel und gewinnt!", use_container_width=True):
                     live['stats'][f"p{i_nw_1}_t"] += w_1; live['stats'][f"p{i_nw_1}_h"] += t_1
                     live['stats'][f"p{i_nw_2}_t"] += w_2; live['stats'][f"p{i_nw_2}_h"] += t_2
-                    if nw_team == 1: live['t1_cups'] = 0
-                    else: live['t2_cups'] = 0
+                    
+                    # BUG-FIX: Die Becher des Gegners auf 0 stellen!
+                    if nw_team == 1: live['t2_cups'] = 0
+                    else: live['t1_cups'] = 0
                     
                     live['game_state'] = 't1_won' if nw_team == 1 else 't2_won'
                     live['winner_team'] = nw_team
-                    live['last_scorer'] = v_idx
+                    live['last_scorer'] = v_idx # Vollstrecker wird zugewiesen
+                    if v_idx is not None: live['clutch_nachwurf_events'].append(v_idx)
                     logik_spiel.log_action(f"🎉 Team {nw_team} dreht das Spiel im Nachwurf und gewinnt!")
                     datenbank.sync_to_cloud(); st.rerun()
 
