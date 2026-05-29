@@ -4,7 +4,6 @@ import datenbank
 
 def save_step():
     l = st.session_state.live
-    # BAUT EINEN SNAPSHOT: Kopiert alles, AUßER die 'history' selbst! (Verhindert den Matroschka-Absturz)
     snapshot = {k: copy.deepcopy(v) for k, v in l.items() if k != 'history'}
     l['history'].append(snapshot)
 
@@ -25,7 +24,6 @@ def do_hit(team_hitting, amount, hits=[], misses=[], bombe_thrower=None):
     names = st.session_state.players
     m = st.session_state.matches[live['match_id']]
     
-    # HART CODIERTES BALLS BACK: Wenn 2 oder 3 Becher fallen, gibt es die Bälle zurück!
     is_balls_back = True if amount >= 2 else False
     live['balls_back'] = is_balls_back
     
@@ -47,11 +45,17 @@ def do_hit(team_hitting, amount, hits=[], misses=[], bombe_thrower=None):
     for p in hits: live['stats'][f'p{p}_h'] += 1; live['stats'][f'p{p}_t'] += 1
     for p in misses: live['stats'][f'p{p}_t'] += 1
         
-    # Wenn ein Team auf 0 fällt -> Normales Spiel einfrieren, Schiedsrichter-Nachwurf starten!
     if live['t1_cups'] == 0 or live['t2_cups'] == 0:
-        live['game_state'] = 'nachwurf_dialog'
-        live['anfang_last_scorer'] = scorer
-        live['anfang_team'] = team_hitting
+        # REGEL-FIX: Nur wenn der Starter auf 0 stellt, geht es in den Nachwurf
+        if team_hitting == live['starter']:
+            live['game_state'] = 'nachwurf_dialog'
+            live['anfang_last_scorer'] = scorer
+            live['anfang_team'] = team_hitting
+        else:
+            # Das Team, das NICHT angefangen hat, wirft auf 0 -> SOFORTIGER SIEG!
+            live['game_state'] = 't1_won' if team_hitting == 1 else 't2_won'
+            live['winner_team'] = team_hitting
+            live['last_scorer'] = scorer
     else:
         if not is_balls_back: 
             change_possession(2 if team_hitting == 1 else 1)
@@ -95,8 +99,14 @@ def do_penalty(team, culprit_idx):
     live['pending_penalty'] = None
     
     if live['t1_cups'] == 0 or live['t2_cups'] == 0:
-        live['game_state'] = 'nachwurf_dialog'
-        live['anfang_last_scorer'] = None
-        live['anfang_team'] = 2 if team == 1 else 1
-        
+        winner_team = 2 if live['t1_cups'] == 0 else 1
+        if winner_team != live['starter']:
+            live['game_state'] = f't{winner_team}_won'
+            live['winner_team'] = winner_team
+            live['last_scorer'] = None
+        else:
+            live['game_state'] = 'nachwurf_dialog'
+            live['anfang_last_scorer'] = None
+            live['anfang_team'] = winner_team
+            
     datenbank.sync_to_cloud()
