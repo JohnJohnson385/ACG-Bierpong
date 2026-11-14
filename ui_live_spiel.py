@@ -347,7 +347,7 @@ def render_live_spiel():
             ctrl1, ctrl2, ctrl3 = st.columns(3)
             with ctrl1:
                 if st.button("↩️ Undo", use_container_width=True, disabled=not live['history']):
-                    last = live['history'].pop(); live.update(last); datenbank.sync_to_cloud(); st.rerun()
+                    logik_spiel.restore_step(live); datenbank.sync_to_cloud(); st.rerun()
             with ctrl2:
                 if st.session_state.confirm_abort:
                     st.warning("Wirklich abbrechen?")
@@ -364,7 +364,7 @@ def render_live_spiel():
                         m['winner_team'] = live.get('winner_team') 
                         m['action_log'] = copy.deepcopy(live['action_log']); m['bombs_events'] = copy.deepcopy(live['bombs_events']); m['clutch_nachwurf_events'] = copy.deepcopy(live['clutch_nachwurf_events'])
                         m['winner_turns'] = live['stats']['turns_t1'] if live['game_state'] == 't1_won' else live['stats']['turns_t2']
-                        m['live_backup'] = copy.deepcopy(live); st.session_state.live = None; datenbank.sync_to_cloud(); st.rerun()
+                        m['live_backup'] = copy.deepcopy({k: v for k, v in live.items() if k != 'history'}); st.session_state.live = None; datenbank.sync_to_cloud(); st.rerun()
                 else: st.button("💾 Ergebnis speichern", use_container_width=True, disabled=True)
 
             # =========================================================================

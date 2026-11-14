@@ -57,6 +57,7 @@ with st.sidebar:
             st.caption("Keine Turniere gefunden.")
     else:
         st.header("👑 Master-Modus")
+        datenbank.render_storage_warning()
         if st.button("🚪 Logout (Zuschauer-Modus)", use_container_width=True):
             st.session_state.admin_auth = False
             if "admin" in st.query_params: del st.query_params["admin"] 

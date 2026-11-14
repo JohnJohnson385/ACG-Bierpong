@@ -2,10 +2,33 @@ import streamlit as st
 import copy
 import datenbank
 
+# Keep a bounded undo stack. Event logs are restored by length, not copied
+# into every snapshot (which previously caused quadratic growth).
+MAX_UNDO_STEPS = 30
+
+
 def save_step():
-    l = st.session_state.live
-    snapshot = {k: copy.deepcopy(v) for k, v in l.items() if k != 'history'}
-    l['history'].append(snapshot)
+    live = st.session_state.live
+    snapshot = {k: copy.deepcopy(v) for k, v in live.items()
+                if k not in ('history', 'action_log')}
+    snapshot['_action_log_length'] = len(live.get('action_log', []))
+    history = live.setdefault('history', [])
+    history.append(snapshot)
+    if len(history) > MAX_UNDO_STEPS:
+        del history[:-MAX_UNDO_STEPS]
+
+
+def restore_step(live):
+    """Undo a step, including its event log; supports older saved snapshots."""
+    history = live.get('history', [])
+    if not history:
+        return False
+    snapshot = history.pop()
+    log_length = snapshot.pop('_action_log_length', None)
+    live.update(snapshot)
+    if log_length is not None:
+        live['action_log'] = live.get('action_log', [])[:log_length]
+    return True
 
 def log_action(text):
     st.session_state.live['action_log'].append(text)
