@@ -60,7 +60,7 @@ def update_storage_monitor(data):
 def render_storage_warning():
     size_bytes = st.session_state.get("firestore_document_size", 0)
     level = st.session_state.get("firestore_storage_level", "normal")
-    if level == "normal":
+    if size_bytes <= 0:
         return
 
     size_kib = size_bytes / 1024
@@ -69,7 +69,10 @@ def render_storage_warning():
     if level == "critical":
         st.error(f"🚨 {message} Die Speichergrenze ist fast erreicht. Turnierverlauf zeitnah sichern und auslagern.")
     else:
-        st.warning(f"⚠️ {message} Das Turnier wächst stark. Nach dem Turnier sollte der Verlauf archiviert werden.")
+        if level == "warning":
+            st.warning(f"⚠️ {message} Das Turnier wächst stark. Nach dem Turnier sollte der Verlauf archiviert werden.")
+        else:
+            st.caption(f"💾 {message}")
 
 @st.cache_resource
 def init_firebase():
