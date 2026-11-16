@@ -1,6 +1,38 @@
 import streamlit as st
 import pandas as pd
 import io
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+
+def format_export_sheet(sheet, tournament, date, widths):
+    sheet.sheet_view.showGridLines = False
+    sheet.freeze_panes = 'A5'
+    for index, width in enumerate(widths, 1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+
+    sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(widths))
+    sheet['A1'] = f'{sheet.title} | {tournament}'
+    sheet['A1'].font = Font(name='Aptos', size=17, bold=True, color='FFFFFF')
+    sheet['A1'].fill = PatternFill('solid', fgColor='172D42')
+    sheet.row_dimensions[1].height = 32
+    sheet['A2'] = f'Turnierdatum: {date}'
+    sheet['A2'].font = Font(name='Aptos', size=10, color='52677A')
+    sheet.row_dimensions[4].height = 25
+
+    for row in sheet.iter_rows(min_row=4):
+        for cell in row:
+            if cell.data_type == 'f':
+                cell.data_type = 's'
+            header = cell.row == 4
+            champion = cell.column == 9 and 'MEISTER' in str(cell.value)
+            background = '176B68' if header else 'FFE39B' if champion else (
+                'EAF4F3' if cell.row % 2 == 0 else 'FFFFFF'
+            )
+            cell.fill = PatternFill('solid', fgColor=background)
+            cell.font = Font(name='Aptos', size=11, bold=header or champion,
+                             color='FFFFFF' if header else '172D42')
+            cell.alignment = Alignment(vertical='center', wrap_text=True)
+
 
 def style_df(val):
     if val == 'Eliminated': return 'color: #9C0006; font-weight: bold'
@@ -306,21 +338,57 @@ def render_statistiken():
     
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df_table[['RANG', 'NAME', 'SP', 'S', 'N', 'DIFF', 'S%', 'SERIE', 'STATUS']].to_excel(writer, sheet_name="Tabelle", index=False)
-        df_matches.to_excel(writer, sheet_name="Spielplan", index=False)
-        df_quote[['RANG', 'NAME', 'TREFFER', 'WÜRFE', 'QUOTE']].to_excel(writer, sheet_name="Trefferquoten", index=False)
-        if not df_gw.empty: df_gw[['RANG', 'NAME', 'SIEGTREFFER']].to_excel(writer, sheet_name="Vollstrecker", index=False)
-        if not df_bomb.empty: df_bomb[['RANG', 'NAME', 'DREIFACHBECHER-TREFFER']].to_excel(writer, sheet_name="Dreifachbecher", index=False)
-        if not df_clutch.empty: df_clutch[['RANG', 'NAME', 'NACHWURF RETTER']].to_excel(writer, sheet_name="Nachwurf Retter", index=False)
-        if not df_dk.empty: df_dk[['RANG', 'NAME', 'FEHLER']].to_excel(writer, sheet_name="Dummkopf", index=False)
-        if match_data: 
-            df_hs[['RANG', 'SPIEL', 'ERGEBNIS', 'DIFF', 'ZÜGE (SIEGER)']].to_excel(writer, sheet_name="Höchste Siege", index=False)
-            df_bk[['RANG', 'SPIEL', 'ZÜGE (SIEGER)', 'ERGEBNIS']].to_excel(writer, sheet_name="Schnellste Siege", index=False)
-            
+        standings = df_table[['RANG', 'NAME', 'SP', 'S', 'N', 'DIFF', 'S%', 'SERIE', 'STATUS']].copy()
+        standings['S%'] = standings['S%'].str.rstrip('%').astype(float) / 100
+        stats = df_quote[['RANG', 'NAME', 'TREFFER', 'WÜRFE', 'QUOTE_VAL', 'SIEGTREFFER',
+                          'DREIFACHBECHER-TREFFER', 'NACHWURF RETTER', 'FEHLER']].copy()
+        stats['QUOTE_VAL'] /= 100
+        stats.columns = ['Rang', 'Spieler', 'Treffer', 'Würfe', 'Wurfquote', 'Vollstrecker',
+                         'Dreifachtreffer', 'Nachwurf-Retter', 'Fehler']
+        standings.columns = ['Rang', 'Spieler', 'Spiele', 'Siege', 'Niederlagen', 'Becherdifferenz',
+                             'Siegquote', 'Serie', 'Status']
+        tables = [
+            ('Abschlusstabelle', standings, (8, 25, 10, 10, 14, 19, 13, 12, 20)),
+            ('Spielerstatistik', stats, (8, 25, 11, 10, 13, 16, 19, 19, 10)),
+            ('Spielplan', df_matches, (12, 30, 30, 22)),
+        ]
+        reports = []
+        for match, game in zip(matches, match_export):
+            if match.get('t1_score') is None or match.get('t2_score') is None:
+                continue
+            reports.append((game, match.get('action_log') or
+                            (match.get('live_backup') or {}).get('action_log') or []))
+        for title, frame, widths in tables:
+            frame.to_excel(writer, sheet_name=title, index=False, startrow=3)
+            sheet = writer.sheets[title]
+            format_export_sheet(sheet, st.session_state.t_name, st.session_state.t_date, widths)
+            sheet.auto_filter.ref = f"A4:{sheet.cell(sheet.max_row, len(widths)).coordinate}"
+            for row in sheet.iter_rows(min_row=5):
+                for cell in row:
+                    if sheet.cell(4, cell.column).value in ('Siegquote', 'Wurfquote'):
+                        cell.number_format = '0.0%'
+        if match_data:
+            for title, frame in [('Höchste Siege', df_hs), ('Schnellste Siege', df_bk)]:
+                frame.to_excel(writer, sheet_name=title, index=False, startrow=3)
+                format_export_sheet(writer.sheets[title], st.session_state.t_name,
+                                    st.session_state.t_date, (8, 55, 20, 12, 20))
+        sheet = writer.book.create_sheet('Spielberichte')
+        for column, heading in enumerate(('Spiel', 'Team 1', 'Team 2', 'Ergebnis', 'Nr.', 'Spielverlauf'), 1):
+            sheet.cell(4, column, heading)
+        for game, entries in reports:
+            for index, entry in enumerate(entries or ['Kein Spielverlauf gespeichert.'], 1):
+                sheet.append([game['Spiel'], game['Team 1'], game['Team 2'], game['Ergebnis'],
+                              index if entries else None, str(entry)])
+        if not reports:
+            sheet.append([None, None, None, None, None, 'Noch keine Spiele abgeschlossen.'])
+        format_export_sheet(sheet, st.session_state.t_name, st.session_state.t_date,
+                            (12, 28, 28, 12, 8, 78))
+        sheet.auto_filter.ref = f'A4:F{sheet.max_row}'
+
     st.download_button(
         label="📥 Gesamtes Turnier als Excel speichern",
         data=buffer.getvalue(),
         file_name=f"Bierpong_Turnier_{st.session_state.t_date}.xlsx",
-        mime="application/vnd.ms-excel",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         type="primary"
     )
