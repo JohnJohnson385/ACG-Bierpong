@@ -34,6 +34,84 @@ def format_export_sheet(sheet, tournament, date, widths):
             cell.alignment = Alignment(vertical='center', wrap_text=True)
 
 
+def export_overview(book, tournament, date, players, matches, standings, stats, biggest):
+    sheet = book.create_sheet('Turnierübersicht', 0)
+    widths = (7, 16, 16, 6, 6, 16, 16, 18, 3, 8, 22, 7, 7, 7, 9, 9, 18)
+    format_export_sheet(sheet, tournament, date, widths)
+
+    def write_row(row, column, values, heading=False):
+        for offset, value in enumerate(values):
+            cell = sheet.cell(row, column + offset, value)
+            if cell.data_type == 'f':
+                cell.data_type = 's'
+            cell.font = Font(name='Aptos', bold=heading, color='FFFFFF' if heading else '172D42')
+            cell.fill = PatternFill('solid', fgColor='294E83' if heading else
+                                    ('EDF3FA' if row % 2 == 0 else 'FFFFFF'))
+            cell.alignment = Alignment(vertical='center', wrap_text=True)
+
+    write_row(4, 1, ('Nr.', 'Team 1 (A)', 'Team 1 (B)', 'T1', 'T2',
+                     'Team 2 (C)', 'Team 2 (D)', 'Letzter Treffer'), True)
+    pending = {}
+    duos = {}
+    for row, match in enumerate(matches, 5):
+        a, b, c, d = (match[key] for key in ('t1_p1', 't1_p2', 't2_p1', 't2_p2'))
+        left, right = match.get('t1_score'), match.get('t2_score')
+        scorer = match.get('last_scorer')
+        write_row(row, 1, (match['id'] + 1, players[a], players[b], left, right,
+                           players[c], players[d], players[scorer] if scorer is not None else None))
+        finished = left is not None and right is not None
+        winner = match.get('winner_team')
+        if finished and winner not in (1, 2):
+            winner = 1 if left > right else 2 if right > left else None
+        for team, pair, columns in [(1, (a, b), (2, 3)), (2, (c, d), (6, 7))]:
+            key = tuple(sorted(pair))
+            if not finished:
+                pending[key] = pending.get(key, 0) + 1
+                continue
+            record = duos.setdefault(key, [0, 0, 0])
+            record[0] += 1
+            record[1] += int(team == winner)
+            record[2] += left - right if team == 1 else right - left
+            if winner in (1, 2):
+                for column in columns:
+                    sheet.cell(row, column).fill = PatternFill(
+                        'solid', fgColor='C6EBD6' if winner == team else 'F8D5D9'
+                    )
+        for column in (4, 5, 8):
+            sheet.cell(row, column).fill = PatternFill('solid', fgColor='FFF0C9')
+
+    write_row(4, 10, ('Rang', 'Name', 'SP', 'S', 'N', 'Diff', 'Sieg %', 'Status'), True)
+    for row, values in enumerate(standings.drop(columns='Serie').itertuples(index=False, name=None), 5):
+        write_row(row, 10, values)
+        sheet.cell(row, 16).number_format = '0%'
+        sheet.cell(row, 15).number_format = '[Green]+0;[Red]-0;0'
+        if 'MEISTER' in str(values[-1]):
+            sheet.cell(row, 17).fill = PatternFill('solid', fgColor='FFD966')
+
+    write_row(13, 10, ('Rang', 'Vollstrecker', 'Anzahl'), True)
+    leaders = stats.sort_values('Vollstrecker', ascending=False, kind='stable')
+    for rank, (_, player) in enumerate(leaders.iterrows(), 1):
+        write_row(13 + rank, 10, (rank, player['Spieler'], int(player['Vollstrecker'])))
+
+    matrix_row = max(21, len(matches) + 6)
+    write_row(matrix_row, 1, ('Offen je Duo', *players), True)
+    for index, player in enumerate(players):
+        counts = [None if index == other else pending.get(tuple(sorted((index, other))), 0)
+                  for other in range(len(players))]
+        write_row(matrix_row + index + 1, 1, (player, *counts))
+
+    write_row(21, 10, ('Rang', 'Höchste Siege (Top 3)', 'Ergebnis'), True)
+    if biggest is not None:
+        for rank, (_, game) in enumerate(biggest.iterrows(), 1):
+            write_row(21 + rank, 10, (rank, game['SPIEL'], game['ERGEBNIS']))
+            sheet.row_dimensions[21 + rank].height = 44
+
+    write_row(27, 10, ('Rang', 'Beste Duos (Top 3)', 'SP', 'S', 'Diff'), True)
+    ordered = sorted(duos.items(), key=lambda item: (-item[1][1], -item[1][2], item[0]))
+    for rank, ((first, second), record) in enumerate(ordered[:3], 1):
+        write_row(27 + rank, 10, (rank, f'{players[first]} & {players[second]}', *record))
+
+
 def style_df(val):
     if val == 'Eliminated': return 'color: #9C0006; font-weight: bold'
     if val == 'Titel drin': return 'color: #008000; font-weight: bold'
@@ -347,8 +425,10 @@ def render_statistiken():
                          'Dreifachtreffer', 'Nachwurf-Retter', 'Fehler']
         standings.columns = ['Rang', 'Spieler', 'Spiele', 'Siege', 'Niederlagen', 'Becherdifferenz',
                              'Siegquote', 'Serie', 'Status']
+        export_overview(writer.book, st.session_state.t_name, st.session_state.t_date,
+                        players, matches, standings, stats, df_hs if match_data else None)
         tables = [
-            ('Abschlusstabelle', standings, (8, 25, 10, 10, 14, 19, 13, 12, 20)),
+            ('Tabelle & Serien', standings, (8, 25, 10, 10, 14, 19, 13, 12, 20)),
             ('Spielerstatistik', stats, (8, 25, 11, 10, 13, 16, 19, 19, 10)),
             ('Spielplan', df_matches, (12, 30, 30, 22)),
         ]
